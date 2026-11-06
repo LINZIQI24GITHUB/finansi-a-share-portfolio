@@ -9,7 +9,7 @@ description: A股组合层。评估一组持仓的风险（年化、波动、夏
 
 ## 快速开始
 
-> 调用 finansi-a-share-portfolio，评估我这个持仓的风险：`holdings.csv`（code,weight）
+> 调用 a-share-portfolio，评估我这个持仓的风险：`holdings.csv`（code,weight）
 
 ```bash
 python scripts/run.py analyze  --holdings holdings.csv --start 2024-01-01 --end 2025-12-31
@@ -31,9 +31,9 @@ python scripts/run.py optimize --codes 600519,300750,688981,000001,002594 \
 
 ## 什么时候别用我
 
-- 单只股票的策略回测 → `a-share-backtest`
-- 单笔该买多少股 → 用 `a-share-backtest` 的仓位逻辑或自己按风控口径算
-- 网格 → `a-share-grid`
+- 单只股票的策略回测 → `finansi-a-share-backtest`
+- 单笔该买多少股 → 用 `finansi-a-share-backtest` 的仓位逻辑或自己按风控口径算
+- 网格 → `finansi-a-share-grid`
 
 ## 输入契约
 
@@ -72,6 +72,26 @@ python scripts/run.py demo          # 离线自检（5 项断言）
 
 注意这个结果本身就有信息量：**风险平价把波动从 23.4% 压到 19.5%，但夏普从 1.52 掉到 1.31**。
 降波动不等于提升风险调整后收益——报告必须同时给等权基准，否则用户会以为“优化一定更好”。
+
+## 图表（组合专用，不是通用净值图）
+
+组合的图必须同时回答两个问题：**配了什么**、**配出来长什么样**。所以版面和回测图不同：
+
+- **左**：目标权重**环形图**，每片标注「股票简称 代码 + 百分比」；权重为 0 的标的单独一行注明「未入选」
+- **右上**：优化组合净值（红线）与等权基准（灰虚线）
+- **右中**：回撤
+- **中间红条**：后视镜偏差提示，夹在图表与绩效指标之间，**不是装饰，是结论的一部分**
+- **底部**：累计收益、年化、波动、夏普、最大回撤、VaR95、HHI 七格
+
+后视镜偏差指的是：权重是用**整段历史**的协方差矩阵一次性求解出来的，
+净值曲线也来自同一段历史。换句话说，这条曲线是「如果当时就知道这段历史，
+这样配会怎样」，不是任何可实盘复现的净值。等权基准是唯一公平的对照。
+
+```bash
+python scripts/run.py optimize ... --plot out/a.png   # 指定路径
+python scripts/run.py optimize ... --no-plot          # 只在调试时用
+```
+
 
 ## 指标口径
 

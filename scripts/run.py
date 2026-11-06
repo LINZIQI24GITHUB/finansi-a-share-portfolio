@@ -26,7 +26,7 @@ for candidate in (os.getenv("ASHARE_LIB"),
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from ashare_core import chart, portfolio  # noqa: E402
+from ashare_core import chart, names, portfolio  # noqa: E402
 from ashare_core.providers.eltdx_provider import EltdxProvider  # noqa: E402
 from ashare_core.store import BarsCache  # noqa: E402
 
@@ -71,26 +71,25 @@ def load_close(codes: list[str], start: str, end: str) -> pd.DataFrame:
     return close
 
 
-def _chart(path: Path, weights: np.ndarray, codes: list[str], ret: pd.DataFrame,
-           stats: dict) -> None:
+def _chart(path: Path, weights, codes: list[str], ret: pd.DataFrame,
+           stats: dict, method: str = "", title: str = "",
+           desc: str = "", weights_title: str = "目标权重",
+           series_label: str = "优化组合") -> None:
     eq = (1 + pd.Series(portfolio.portfolio_returns(weights, ret), index=ret.index)).cumprod()
     eq = eq * 100_000
     bench_w = portfolio.equal_weights(len(codes))
     bench = (1 + pd.Series(portfolio.portfolio_returns(bench_w, ret), index=ret.index)).cumprod() * 100_000
-    met = {
-        "total_return": stats["total_return"],
-        "cagr": (1 + stats["total_return"]) ** (252 / max(stats["n_days"], 1)) - 1,
-        "max_dd": stats["max_dd"],
-        "volatility": stats["ann_vol"],
-        "sharpe": stats["sharpe"],
-        "trades": 0, "win_rate": 0.0, "payoff": 0.0,
-    }
-    top = ", ".join(f"{c} {w:.0%}" for c, w in sorted(zip(codes, weights), key=lambda x: -x[1])[:4])
-    out = chart.render(path, eq, met,
-                       title="组合回测",
-                       desc=f"权重 {top}…",
-                       period=f"{ret.index[0][:10]} ~ {ret.index[-1][:10]} · 后复权",
-                       benchmark=bench)
+
+    label = {"minvar": "最小方差", "riskparity": "风险平价", "equal": "等权"}.get(method, method or "")
+    display = [names.lookup_name(c, DATA) for c in codes]
+    out = chart.render_portfolio(
+        path, weights, codes, eq, bench, stats, names=display,
+        title=title or (f"组合优化 · {label}" if label else "现有持仓风险"),
+        desc=desc or f"{len(codes)} 只标的 · 按方法求解权重",
+        weights_title=weights_title,
+        series_label=series_label,
+        period=f"{ret.index[0][:10]} ~ {ret.index[-1][:10]} · 后复权",
+    )
     if out:
         print(f"  组合图 → {out}")
 
@@ -152,7 +151,9 @@ def cmd_analyze(args) -> int:
     if not args.no_plot:
         out = Path(args.plot) if args.plot else SKILL_DIR / "out" / f"portfolio_{len(codes)}.png"
         out.parent.mkdir(parents=True, exist_ok=True)
-        _chart(out, w, codes, ret, stats)
+        _chart(out, w, codes, ret, stats, "", "现有持仓风险",
+               desc=f"{len(codes)} 只标的 · 按当前市值权重", weights_title="当前权重",
+               series_label="现有持仓")
     return 0
 
 
@@ -175,11 +176,15 @@ def cmd_optimize(args) -> int:
     eq_stats = portfolio.risk_stats(eq_w, ret)
     print(f"\n  对比等权：等权波动 {eq_stats['ann_vol']*100:.2f}% / 夏普 {eq_stats['sharpe']:.2f}"
           f"　优化后波动 {stats['ann_vol']*100:.2f}% / 夏普 {stats['sharpe']:.2f}")
+    print("\n  ⚠ 后视镜偏差：权重由整段历史协方差一次性求解，净值曲线来自同一段历史；")
+    print("     这不是可实盘复现的净值，只用于对比不同约束下的组合形态。")
 
     if not args.no_plot:
         out = Path(args.plot) if args.plot else SKILL_DIR / "out" / f"portfolio_{args.method}.png"
         out.parent.mkdir(parents=True, exist_ok=True)
-        _chart(out, w, codes, ret, stats)
+        _chart(out, w, codes, ret, stats, args.method,
+               desc=(f"{len(codes)} 只标的 · 单票上限 {args.max_weight:.0%} · "
+                     f"{ {'minvar': '最小方差', 'riskparity': '风险平价', 'equal': '等权'}.get(args.method, args.method) }"))
     return 0
 
 
